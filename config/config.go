@@ -23,9 +23,11 @@ type Config struct {
 var AppConfig *Config
 
 func Load() error {
-	// Load .env file if present; ignore if missing (Railway/production injects env vars directly)
-	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("error loading .env file: %v", err)
+	// Load .env file only if it exists; Railway/production injects env vars directly
+	if _, err := os.Stat(".env"); err == nil {
+		if err := godotenv.Load(); err != nil {
+			return fmt.Errorf("error loading .env file: %v", err)
+		}
 	}
 
 	AppConfig = &Config{
