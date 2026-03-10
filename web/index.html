@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AAPL Dashboard — Prophet Trader</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0f1117; color: #e2e8f0; }
+    .card { background: #1a1d27; border: 1px solid #2d3148; }
+    .th { background: #12151f; color: #94a3b8; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; }
+    .pos { color: #22c55e; }
+    .neg { color: #ef4444; }
+    .badge-call { background: #14532d; color: #86efac; }
+    .badge-put  { background: #450a0a; color: #fca5a5; }
+    .spinner { border: 2px solid #2d3148; border-top-color: #6366f1; border-radius: 50%; width: 18px; height: 18px; animation: spin 0.7s linear infinite; display:inline-block; vertical-align:middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="min-h-screen p-6 font-mono text-sm">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-xl font-bold text-white tracking-wide">AAPL <span class="text-indigo-400">Dashboard</span></h1>
+      <p id="last-updated" class="text-xs text-slate-500 mt-0.5">Loading…</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="status-dot" class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>
+      <span id="status-text" class="text-xs text-slate-400">Connecting</span>
+      <button onclick="loadAll()" class="text-xs bg-indigo-700 hover:bg-indigo-600 text-white px-3 py-1.5 rounded transition">Refresh</button>
+    </div>
+  </div>
+
+  <!-- Row 1: Quote + Latest Bar -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+
+    <!-- Real-time Quote -->
+    <div class="card rounded-lg p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-white font-semibold">Real-time Quote</h2>
+        <span id="quote-spinner" class="spinner"></span>
+      </div>
+      <table class="w-full" id="quote-table">
+        <tbody>
+          <tr><td class="th py-1 pr-4">Bid</td><td id="q-bid" class="text-right text-white">—</td></tr>
+          <tr><td class="th py-1 pr-4">Bid Size</td><td id="q-bid-sz" class="text-right text-slate-300">—</td></tr>
+          <tr><td class="th py-1 pr-4">Ask</td><td id="q-ask" class="text-right text-white">—</td></tr>
+          <tr><td class="th py-1 pr-4">Ask Size</td><td id="q-ask-sz" class="text-right text-slate-300">—</td></tr>
+          <tr><td class="th py-1 pr-4">Spread</td><td id="q-spread" class="text-right text-yellow-300">—</td></tr>
+          <tr><td class="th py-1 pr-4">Time</td><td id="q-time" class="text-right text-slate-400 text-xs">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Latest Bar -->
+    <div class="card rounded-lg p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-white font-semibold">Latest Bar</h2>
+        <span id="bar-spinner" class="spinner"></span>
+      </div>
+      <table class="w-full">
+        <tbody>
+          <tr><td class="th py-1 pr-4">Open</td><td id="b-open" class="text-right text-white">—</td></tr>
+          <tr><td class="th py-1 pr-4">High</td><td id="b-high" class="text-right pos">—</td></tr>
+          <tr><td class="th py-1 pr-4">Low</td><td id="b-low" class="text-right neg">—</td></tr>
+          <tr><td class="th py-1 pr-4">Close</td><td id="b-close" class="text-right text-white font-bold">—</td></tr>
+          <tr><td class="th py-1 pr-4">Volume</td><td id="b-vol" class="text-right text-slate-300">—</td></tr>
+          <tr><td class="th py-1 pr-4">VWAP</td><td id="b-vwap" class="text-right text-indigo-300">—</td></tr>
+          <tr><td class="th py-1 pr-4">Time</td><td id="b-time" class="text-right text-slate-400 text-xs">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Historical Bars -->
+  <div class="card rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-white font-semibold">Historical Daily Bars <span class="text-slate-500 font-normal text-xs">(last 30 days)</span></h2>
+      <span id="bars-spinner" class="spinner"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr>
+            <th class="th py-2 px-2 text-left">Date</th>
+            <th class="th py-2 px-2 text-right">Open</th>
+            <th class="th py-2 px-2 text-right">High</th>
+            <th class="th py-2 px-2 text-right">Low</th>
+            <th class="th py-2 px-2 text-right">Close</th>
+            <th class="th py-2 px-2 text-right">Change</th>
+            <th class="th py-2 px-2 text-right">Volume</th>
+            <th class="th py-2 px-2 text-right">VWAP</th>
+          </tr>
+        </thead>
+        <tbody id="bars-body">
+          <tr><td colspan="8" class="text-center text-slate-500 py-4">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Options Chain -->
+  <div class="card rounded-lg p-4">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-3">
+        <h2 class="text-white font-semibold">Options Chain <span class="text-slate-500 font-normal text-xs" id="options-expiry"></span></h2>
+        <div class="flex gap-2 text-xs">
+          <button onclick="setOptType('call')" id="btn-call" class="px-2 py-1 rounded badge-call font-semibold">CALLS</button>
+          <button onclick="setOptType('put')"  id="btn-put"  class="px-2 py-1 rounded text-slate-400 hover:text-white border border-slate-700">PUTS</button>
+          <button onclick="setOptType('all')"  id="btn-all"  class="px-2 py-1 rounded text-slate-400 hover:text-white border border-slate-700">ALL</button>
+        </div>
+      </div>
+      <span id="options-spinner" class="spinner"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr>
+            <th class="th py-2 px-2 text-left">Symbol</th>
+            <th class="th py-2 px-2 text-center">Type</th>
+            <th class="th py-2 px-2 text-right">Strike</th>
+            <th class="th py-2 px-2 text-right">Expiry</th>
+            <th class="th py-2 px-2 text-right">DTE</th>
+            <th class="th py-2 px-2 text-right">Bid</th>
+            <th class="th py-2 px-2 text-right">Ask</th>
+            <th class="th py-2 px-2 text-right">Delta</th>
+            <th class="th py-2 px-2 text-right">IV</th>
+            <th class="th py-2 px-2 text-right">Volume</th>
+            <th class="th py-2 px-2 text-right">OI</th>
+          </tr>
+        </thead>
+        <tbody id="options-body">
+          <tr><td colspan="11" class="text-center text-slate-500 py-4">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p id="options-count" class="text-xs text-slate-500 mt-2"></p>
+  </div>
+
+<script>
+  // ─── state ────────────────────────────────────────────────────────────────
+  let allContracts = [];
+  let optType = 'call';
+
+  // ─── helpers ──────────────────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+  const fmt  = n => n == null ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt4 = n => n == null ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  const fmtVol = n => n == null ? '—' : Number(n).toLocaleString('en-US');
+  const fmtPct = n => n == null ? '—' : (n * 100).toFixed(1) + '%';
+  const fmtTs = iso => iso ? new Date(iso).toLocaleString('en-US', { hour12: false }) : '—';
+  const fmtDate = iso => iso ? iso.slice(0,10) : '—';
+
+  function hide(id) { $(id).style.display = 'none'; }
+  function show(id) { $(id).style.display = 'inline-block'; }
+
+  function setStatus(ok) {
+    $('status-dot').className = `w-2 h-2 rounded-full inline-block ${ok ? 'bg-green-400' : 'bg-red-400'}`;
+    $('status-text').textContent = ok ? 'Live' : 'Error';
+  }
+
+  // ─── fetch helpers ────────────────────────────────────────────────────────
+  async function apiFetch(path) {
+    const r = await fetch(path);
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    return r.json();
+  }
+
+  // ─── quote ────────────────────────────────────────────────────────────────
+  async function loadQuote() {
+    show('quote-spinner');
+    try {
+      const q = await apiFetch('/api/v1/market/quote/AAPL');
+      $('q-bid').textContent    = '$' + fmt(q.BidPrice);
+      $('q-bid-sz').textContent = fmtVol(q.BidSize);
+      $('q-ask').textContent    = '$' + fmt(q.AskPrice);
+      $('q-ask-sz').textContent = fmtVol(q.AskSize);
+      $('q-spread').textContent = '$' + fmt4(q.AskPrice - q.BidPrice);
+      $('q-time').textContent   = fmtTs(q.Timestamp);
+      setStatus(true);
+    } catch(e) {
+      $('q-bid').textContent = 'Error: ' + e.message;
+      setStatus(false);
+    }
+    hide('quote-spinner');
+  }
+
+  // ─── latest bar ───────────────────────────────────────────────────────────
+  async function loadBar() {
+    show('bar-spinner');
+    try {
+      const b = await apiFetch('/api/v1/market/bar/AAPL');
+      $('b-open').textContent  = '$' + fmt(b.Open);
+      $('b-high').textContent  = '$' + fmt(b.High);
+      $('b-low').textContent   = '$' + fmt(b.Low);
+      $('b-close').textContent = '$' + fmt(b.Close);
+      $('b-vol').textContent   = fmtVol(b.Volume);
+      $('b-vwap').textContent  = '$' + fmt(b.VWAP);
+      $('b-time').textContent  = fmtTs(b.Timestamp);
+    } catch(e) {
+      $('b-close').textContent = 'Error';
+    }
+    hide('bar-spinner');
+  }
+
+  // ─── historical bars ──────────────────────────────────────────────────────
+  async function loadBars() {
+    show('bars-spinner');
+    try {
+      const data = await apiFetch('/api/v1/market/bars/AAPL?timeframe=1Day');
+      const bars = data.bars || [];
+      const tbody = $('bars-body');
+      if (!bars.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-slate-500 py-4">No data</td></tr>'; return; }
+      tbody.innerHTML = bars.slice().reverse().map((b, i, arr) => {
+        const prev  = arr[i + 1];
+        const chg   = prev ? b.Close - prev.Close : 0;
+        const chgPct= prev ? (chg / prev.Close * 100) : 0;
+        const cls   = chg >= 0 ? 'pos' : 'neg';
+        const sign  = chg >= 0 ? '+' : '';
+        return `<tr class="border-t border-slate-800 hover:bg-slate-800/30">
+          <td class="py-1.5 px-2 text-slate-300">${fmtDate(b.Timestamp)}</td>
+          <td class="py-1.5 px-2 text-right">${fmt(b.Open)}</td>
+          <td class="py-1.5 px-2 text-right pos">${fmt(b.High)}</td>
+          <td class="py-1.5 px-2 text-right neg">${fmt(b.Low)}</td>
+          <td class="py-1.5 px-2 text-right font-semibold">${fmt(b.Close)}</td>
+          <td class="py-1.5 px-2 text-right ${cls}">${prev ? sign + fmt(chg) + ' (' + sign + chgPct.toFixed(2) + '%)' : '—'}</td>
+          <td class="py-1.5 px-2 text-right text-slate-400">${fmtVol(b.Volume)}</td>
+          <td class="py-1.5 px-2 text-right text-indigo-300">${fmt(b.VWAP)}</td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      $('bars-body').innerHTML = `<tr><td colspan="8" class="text-center neg py-4">Error: ${e.message}</td></tr>`;
+    }
+    hide('bars-spinner');
+  }
+
+  // ─── options chain ────────────────────────────────────────────────────────
+  function nextThirdFriday() {
+    const now = new Date();
+    for (let mo = 0; mo <= 3; mo++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + mo, 1);
+      let fridays = 0;
+      while (fridays < 3) { if (d.getDay() === 5) fridays++; if (fridays < 3) d.setDate(d.getDate() + 1); }
+      if ((d - now) > 5 * 86400000) return d.toISOString().slice(0,10);
+    }
+  }
+
+  async function loadOptions() {
+    show('options-spinner');
+    try {
+      const exp = nextThirdFriday();
+      $('options-expiry').textContent = `— expiry ${exp}`;
+      const contracts = await apiFetch(`/api/v1/options/chain/AAPL?expiration=${exp}`);
+      allContracts = Array.isArray(contracts) ? contracts : [];
+      renderOptions();
+    } catch(e) {
+      $('options-body').innerHTML = `<tr><td colspan="11" class="text-center neg py-4">Error: ${e.message}</td></tr>`;
+    }
+    hide('options-spinner');
+  }
+
+  function setOptType(t) {
+    optType = t;
+    ['call','put','all'].forEach(x => {
+      const btn = $('btn-' + x);
+      if (x === t) {
+        btn.className = `px-2 py-1 rounded font-semibold ${x === 'call' ? 'badge-call' : x === 'put' ? 'badge-put' : 'bg-indigo-700 text-white'}`;
+      } else {
+        btn.className = 'px-2 py-1 rounded text-slate-400 hover:text-white border border-slate-700';
+      }
+    });
+    renderOptions();
+  }
+
+  function renderOptions() {
+    const filtered = optType === 'all' ? allContracts : allContracts.filter(c => c.ContractType === optType);
+    const sorted   = filtered.slice().sort((a, b) => a.StrikePrice - b.StrikePrice);
+    $('options-count').textContent = `Showing ${sorted.length} contracts${optType !== 'all' ? ` (${optType}s)` : ''}`;
+
+    if (!sorted.length) {
+      $('options-body').innerHTML = '<tr><td colspan="11" class="text-center text-slate-500 py-4">No contracts</td></tr>';
+      return;
+    }
+    $('options-body').innerHTML = sorted.map(c => {
+      const badge = c.ContractType === 'call'
+        ? '<span class="badge-call px-1.5 py-0.5 rounded text-xs font-bold">C</span>'
+        : '<span class="badge-put px-1.5 py-0.5 rounded text-xs font-bold">P</span>';
+      const ivCls = c.ImpliedVolatility > 0.5 ? 'text-yellow-400' : 'text-slate-300';
+      return `<tr class="border-t border-slate-800 hover:bg-slate-800/30">
+        <td class="py-1.5 px-2 text-slate-300 text-xs">${c.Symbol}</td>
+        <td class="py-1.5 px-2 text-center">${badge}</td>
+        <td class="py-1.5 px-2 text-right font-semibold">${fmt(c.StrikePrice)}</td>
+        <td class="py-1.5 px-2 text-right text-slate-400 text-xs">${fmtDate(c.ExpirationDate)}</td>
+        <td class="py-1.5 px-2 text-right text-slate-300">${c.DTE ?? '—'}</td>
+        <td class="py-1.5 px-2 text-right">${c.Bid > 0 ? '$' + fmt(c.Bid) : '—'}</td>
+        <td class="py-1.5 px-2 text-right">${c.Ask > 0 ? '$' + fmt(c.Ask) : '—'}</td>
+        <td class="py-1.5 px-2 text-right text-indigo-300">${c.Delta !== 0 ? c.Delta.toFixed(3) : '—'}</td>
+        <td class="py-1.5 px-2 text-right ${ivCls}">${c.ImpliedVolatility > 0 ? fmtPct(c.ImpliedVolatility) : '—'}</td>
+        <td class="py-1.5 px-2 text-right text-slate-400">${fmtVol(c.Volume)}</td>
+        <td class="py-1.5 px-2 text-right text-slate-400">${fmtVol(c.OpenInterest)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ─── load all ─────────────────────────────────────────────────────────────
+  async function loadAll() {
+    $('last-updated').textContent = 'Refreshing…';
+    await Promise.all([loadQuote(), loadBar(), loadBars(), loadOptions()]);
+    $('last-updated').textContent = 'Last updated: ' + new Date().toLocaleString('en-US', { hour12: false });
+  }
+
+  // Initial load + auto-refresh every 60 seconds
+  loadAll();
+  setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
