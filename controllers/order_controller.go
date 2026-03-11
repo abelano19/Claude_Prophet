@@ -552,10 +552,7 @@ func (oc *OrderController) GetOptionsChain(c *gin.Context) {
 		}
 
 		// Apply option type filter
-		if optionType == "call" && contract.Delta <= 0 {
-			continue
-		}
-		if optionType == "put" && contract.Delta >= 0 {
+		if optionType != "" && contract.ContractType != optionType {
 			continue
 		}
 

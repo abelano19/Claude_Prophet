@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"prophet-trader/interfaces"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
@@ -339,29 +342,72 @@ func (s *AlpacaTradingService) GetOptionsChain(ctx context.Context, underlying s
 
 	// Convert to our OptionContract format
 	contracts := make([]*interfaces.OptionContract, 0, len(snapshot.Snapshots))
+	now := time.Now()
 	for symbol, data := range snapshot.Snapshots {
-		// Parse the OCC symbol to extract strike, expiration, and type
-		// OCC format: TSLA251219C00400000
-		// This is a simplified parser - you may want to use a proper OCC parser library
+		// Parse OCC symbol: e.g. AAPL260320C00200000
+		// Format: UNDERLYING + YYMMDD + C/P + strike*1000 (8 digits)
+		strikePrice, contractType, expDate := parseOCCSymbol(symbol, underlying, expiration)
+		dte := int(math.Ceil(expDate.Sub(now).Hours() / 24))
+		if dte < 0 {
+			dte = 0
+		}
+
 		contract := &interfaces.OptionContract{
-			Symbol:           symbol,
-			UnderlyingSymbol: underlying,
-			Bid:              data.LatestQuote.Bid,
-			Ask:              data.LatestQuote.Ask,
-			Premium:          data.LatestTrade.Price,
+			Symbol:            symbol,
+			UnderlyingSymbol:  underlying,
+			ContractType:      contractType,
+			StrikePrice:       strikePrice,
+			Bid:               data.LatestQuote.Bid,
+			Ask:               data.LatestQuote.Ask,
+			Premium:           data.LatestTrade.Price,
 			ImpliedVolatility: data.ImpliedVolatility,
-			Delta:            data.Greeks.Delta,
-			Gamma:            data.Greeks.Gamma,
-			Theta:            data.Greeks.Theta,
-			Vega:             data.Greeks.Vega,
-			ExpirationDate:   expiration,
-			// TODO: Parse strike price and option type from OCC symbol
+			Delta:             data.Greeks.Delta,
+			Gamma:             data.Greeks.Gamma,
+			Theta:             data.Greeks.Theta,
+			Vega:              data.Greeks.Vega,
+			ExpirationDate:    expDate,
+			DTE:               dte,
 		}
 		contracts = append(contracts, contract)
 	}
 
 	s.logger.WithField("count", len(contracts)).Info("Fetched options chain")
 	return contracts, nil
+}
+
+// parseOCCSymbol extracts strike price, contract type, and expiration from an OCC symbol.
+// OCC format: AAPL260320C00200000 → underlying + YYMMDD + C/P + strike*1000 (8 digits)
+func parseOCCSymbol(symbol string, underlying string, fallbackExp time.Time) (strike float64, contractType string, exp time.Time) {
+	exp = fallbackExp
+	// Strip the underlying prefix to get the suffix (e.g. "260320C00200000")
+	suffix := strings.TrimPrefix(symbol, underlying)
+	// The suffix should be at least 15 chars: 6 date + 1 C/P + 8 strike
+	if len(suffix) < 15 {
+		// Fall back: infer type from delta sign
+		return 0, "", exp
+	}
+
+	// Parse date: YYMMDD
+	datePart := suffix[:6]
+	if parsed, err := time.Parse("060102", datePart); err == nil {
+		exp = parsed
+	}
+
+	// Parse call/put
+	cpChar := string(suffix[6])
+	if cpChar == "C" || cpChar == "c" {
+		contractType = "call"
+	} else {
+		contractType = "put"
+	}
+
+	// Parse strike: last 8 digits represent strike * 1000
+	strikePart := suffix[7:]
+	if val, err := strconv.ParseFloat(strikePart, 64); err == nil {
+		strike = val / 1000.0
+	}
+
+	return strike, contractType, exp
 }
 
 // GetOptionsQuote retrieves a quote for a specific options contract

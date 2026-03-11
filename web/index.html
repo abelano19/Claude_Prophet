@@ -251,8 +251,8 @@
     try {
       const exp = nextThirdFriday();
       $('options-expiry').textContent = `— expiry ${exp}`;
-      const contracts = await apiFetch(`/api/v1/options/chain/AAPL?expiration=${exp}`);
-      allContracts = Array.isArray(contracts) ? contracts : [];
+      const data = await apiFetch(`/api/v1/options/chain/AAPL?expiration=${exp}`);
+      allContracts = Array.isArray(data.contracts) ? data.contracts : [];
       renderOptions();
     } catch(e) {
       $('options-body').innerHTML = `<tr><td colspan="11" class="text-center neg py-4">Error: ${e.message}</td></tr>`;
