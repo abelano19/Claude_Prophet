@@ -37,7 +37,7 @@ func Load() error {
 		AlpacaPaper:       getEnvOrDefault("ALPACA_PAPER", "true") == "true",
 		GeminiAPIKey:      os.Getenv("GEMINI_API_KEY"),
 		DatabasePath:      getEnvOrDefault("DATABASE_PATH", "./data/prophet_trader.db"),
-		ServerPort:        getEnvOrDefault("SERVER_PORT", "4534"),
+		ServerPort:        getEnvOrDefault("PORT", getEnvOrDefault("SERVER_PORT", "4534")),
 		EnableLogging:     getEnvOrDefault("ENABLE_LOGGING", "true") == "true",
 		LogLevel:          getEnvOrDefault("LOG_LEVEL", "info"),
 		DataRetentionDays: 90,
